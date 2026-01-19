@@ -57,7 +57,12 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
   
   const containerRef = useRef<HTMLDivElement>(null);
   const bufferCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
+  
+  // Use Ref for drawing state to ensure synchronous updates during rapid touch events
+  const isDrawingRef = useRef(false);
+  // Keep state for UI updates if needed (cursor styles), though logic mainly relies on Ref
+  const [_, setIsDrawingState] = useState(false);
+
   const lastPointRef = useRef<Point | null>(null);
   const animationFrameIdRef = useRef<number | null>(null);
   
@@ -478,7 +483,10 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
     // 1. Handle Multi-touch for gestures
     if ('touches' in e && e.touches.length === 2) {
       e.preventDefault();
-      setIsDrawing(false); // Stop drawing if it was active
+      // Stop drawing if it was active
+      isDrawingRef.current = false;
+      setIsDrawingState(false);
+      
       isGesturingRef.current = true;
       lastDistRef.current = getTouchDistance(e.touches[0], e.touches[1]);
       lastCenterRef.current = getTouchCenter(e.touches[0], e.touches[1]);
@@ -489,7 +497,10 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
     if (mode === AppMode.DRAW && (!('touches' in e) || e.touches.length === 1)) {
       e.preventDefault(); 
       const pos = getCanvasPos(e);
-      setIsDrawing(true);
+      
+      // Update Ref for sync access in Move
+      isDrawingRef.current = true;
+      setIsDrawingState(true);
       
       let pressure = -1; 
       if ('touches' in e && e.touches.length > 0) {
@@ -534,7 +545,8 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
     }
 
     // 2. Handle Drawing
-    if (mode === AppMode.DRAW && isDrawing) {
+    // Use the Ref here to check drawing state synchronously
+    if (mode === AppMode.DRAW && isDrawingRef.current) {
       e.preventDefault();
       // Safety check: if multi-touch somehow slipped in
       if ('touches' in e && e.touches.length > 1) return;
@@ -568,8 +580,9 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
         isGesturingRef.current = false;
     }
 
-    if (isDrawing) {
-      setIsDrawing(false);
+    if (isDrawingRef.current) {
+      isDrawingRef.current = false;
+      setIsDrawingState(false);
       lastPointRef.current = null;
       saveHistory();
     }

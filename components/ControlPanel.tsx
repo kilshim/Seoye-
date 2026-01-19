@@ -119,7 +119,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
         {/* Desktop Header (Hidden on Mobile) */}
         <div className="hidden md:flex items-start justify-between mb-6 shrink-0">
           <div>
-            <h1 className="text-4xl font-black text-stone-900 tracking-tighter" style={{ fontFamily: 'Noto Serif KR' }}>
+            <h1 className="text-4xl font-black text-stone-900 tracking-tighter">
               서예 <span className="text-red-700 text-xl font-serif align-top opacity-80">Seoye</span>
             </h1>
             <p className="text-stone-500 text-xs mt-2 font-medium tracking-wide">

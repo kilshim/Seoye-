@@ -201,7 +201,7 @@ const App: React.FC = () => {
       <div className="fixed top-0 left-0 w-full p-6 z-50 pointer-events-none md:hidden flex justify-between items-start">
         {/* Title */}
         <div>
-          <h1 className="text-4xl font-black text-stone-900 tracking-tighter" style={{ fontFamily: 'Noto Serif KR' }}>
+          <h1 className="text-4xl font-black text-stone-900 tracking-tighter">
             서예 <span className="text-red-700 text-lg font-serif align-top opacity-80">Seoye</span>
           </h1>
           <p className="text-stone-500 text-sm mt-2 font-medium tracking-wide">
