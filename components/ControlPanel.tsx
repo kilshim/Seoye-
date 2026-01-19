@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BrushSettings, AppMode, ViewState, FontStyle, WeightOption, Preset } from '../types';
-import { Sliders, RefreshCw, Trash2, Image, FileCode, Brush, Type, Send, RotateCw, Circle, Droplets, MoreHorizontal, Triangle, AlignCenterHorizontal, Italic, Type as TypeIcon, AlignVerticalJustifyCenter, Undo2, Redo2, Dices, Save, X, Ruler, RotateCcw, Bookmark, Check, Bold, Sparkles, BookOpen } from 'lucide-react';
+import { Sliders, RefreshCw, Trash2, Image, FileCode, Brush, Type, Send, RotateCw, Circle, Droplets, MoreHorizontal, Triangle, AlignCenterHorizontal, Italic, Type as TypeIcon, AlignVerticalJustifyCenter, Undo2, Redo2, Dices, Save, X, Ruler, RotateCcw, Bookmark, Check, Bold, Sparkles, BookOpen, Eraser } from 'lucide-react';
 
 interface ControlPanelProps {
   settings: BrushSettings;
@@ -75,6 +75,10 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
   const handleWeightChange = (weight: WeightOption) => {
     onSettingsChange({ ...settings, weightOption: weight });
   };
+  
+  const handleEraserToggle = () => {
+    onSettingsChange({ ...settings, isEraser: !settings.isEraser });
+  };
 
   const handleManualSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -143,7 +147,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
            <button onClick={onRedo} className="p-2 bg-stone-100 rounded-lg hover:bg-stone-200 text-stone-700" title="다시 실행">
              <Redo2 className="w-4 h-4" />
            </button>
-           <div className="flex-1 flex bg-stone-100 rounded-lg p-1">
+           <div className="flex-1 flex bg-stone-100 rounded-lg p-1 gap-1">
             <button
               onClick={() => onModeChange(AppMode.DRAW)}
               className={`flex-1 flex items-center justify-center rounded-md text-sm font-medium transition-all ${
@@ -170,6 +174,16 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
             <div className="space-y-4 pb-2 border-b border-stone-100">
                {/* Utility Buttons Row */}
                <div className="flex items-center justify-end gap-1">
+                  <button 
+                    onClick={handleEraserToggle} 
+                    className={`text-[10px] flex items-center px-2 py-1 rounded-md transition-colors border ${
+                      settings.isEraser
+                        ? 'bg-stone-800 text-white border-stone-800' 
+                        : 'bg-white text-stone-600 border-stone-200 hover:border-stone-400'
+                    }`}
+                  >
+                     <Eraser className="w-3 h-3 mr-1" /> 지우개
+                  </button>
                   <button onClick={onRandomize} className="text-[10px] flex items-center px-2 py-1 bg-purple-50 text-purple-700 rounded-md hover:bg-purple-100 transition-colors">
                      <Dices className="w-3 h-3 mr-1" /> 랜덤
                   </button>

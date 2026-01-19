@@ -26,6 +26,9 @@ export interface BrushSettings {
   fontSize: number;  // Font size for generated text
   fontStyle: FontStyle;
   weightOption: WeightOption;
+  
+  // Tools
+  isEraser: boolean;
 }
 
 export interface GeneratedPhrase {

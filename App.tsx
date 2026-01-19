@@ -36,7 +36,10 @@ const FACTORY_DEFAULTS: BrushSettings = {
   slant: 0,         
   fontSize: 150,    
   fontStyle: 'PEN',
-  weightOption: 'NORMAL'
+  weightOption: 'NORMAL',
+  
+  // Tools
+  isEraser: false
 };
 
 const App: React.FC = () => {

@@ -23,18 +23,18 @@ interface CalligraphyCanvasProps {
 const CANVAS_SCALE = 1;
 const MAX_HISTORY = 20;
 
-// Helper to get distance between two touch points
-const getTouchDistance = (t1: React.Touch, t2: React.Touch) => {
-  const dx = t2.clientX - t1.clientX;
-  const dy = t2.clientY - t1.clientY;
+// Helper to get distance between two points (used for gesture simulation)
+const getDistance = (p1: { x: number, y: number }, p2: { x: number, y: number }) => {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
   return Math.sqrt(dx * dx + dy * dy);
 };
 
-// Helper to get center point of two touches
-const getTouchCenter = (t1: React.Touch, t2: React.Touch) => {
+// Helper to get center point
+const getCenter = (p1: { x: number, y: number }, p2: { x: number, y: number }) => {
   return {
-    x: (t1.clientX + t2.clientX) / 2,
-    y: (t1.clientY + t2.clientY) / 2,
+    x: (p1.x + p2.x) / 2,
+    y: (p1.y + p2.y) / 2,
   };
 };
 
@@ -58,11 +58,11 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
   const containerRef = useRef<HTMLDivElement>(null);
   const bufferCanvasRef = useRef<HTMLCanvasElement | null>(null);
   
-  // Use Ref for drawing state to ensure synchronous updates during rapid touch events
+  // Track active pointers for multi-touch gestures using PointerEvents
+  const activePointers = useRef<Map<number, PointerEvent>>(new Map());
+  
+  // Drawing state
   const isDrawingRef = useRef(false);
-  // Keep state for UI updates if needed (cursor styles), though logic mainly relies on Ref
-  const [_, setIsDrawingState] = useState(false);
-
   const lastPointRef = useRef<Point | null>(null);
   const animationFrameIdRef = useRef<number | null>(null);
   
@@ -114,6 +114,7 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
       const canvas = drawingCanvasRef.current;
       const ctx = canvas?.getContext('2d');
       if (canvas && ctx && step) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear before restore to handle transparency
         ctx.putImageData(step.imageData, 0, 0);
         drawingSvgRef.current = [...step.svgPaths];
       }
@@ -128,6 +129,7 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
       const canvas = drawingCanvasRef.current;
       const ctx = canvas?.getContext('2d');
       if (canvas && ctx && step) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.putImageData(step.imageData, 0, 0);
         drawingSvgRef.current = [...step.svgPaths];
       }
@@ -203,22 +205,14 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
   }));
 
   // Helper: Get coordinate in Canvas space
-  const getCanvasPos = useCallback((e: React.MouseEvent | React.TouchEvent | MouseEvent | TouchEvent) => {
+  const getCanvasPos = useCallback((clientX: number, clientY: number) => {
     const canvas = drawingCanvasRef.current; 
     if (!canvas) return { x: 0, y: 0 };
     
     const rect = canvas.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return { x: 0, y: 0 };
     
-    let clientX, clientY;
-    if ('touches' in e) {
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
-    } else {
-      clientX = (e as React.MouseEvent | MouseEvent).clientX;
-      clientY = (e as React.MouseEvent | MouseEvent).clientY;
-    }
-    
+    // Account for CSS scaling vs Internal resolution
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
 
@@ -237,7 +231,8 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
     ry: number, 
     rotation: number, 
     color: string, 
-    opacity: number
+    opacity: number,
+    isEraser: boolean = false
   ) => {
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(rx) || !Number.isFinite(ry)) return;
 
@@ -247,15 +242,19 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
     ctx.ellipse(x, y, rx, ry, rotation, 0, Math.PI * 2);
     ctx.fill();
 
-    const cx = x.toFixed(1);
-    const cy = y.toFixed(1);
-    const rX = rx.toFixed(1);
-    const rY = ry.toFixed(1);
-    const rotDeg = ((rotation * 180) / Math.PI).toFixed(1);
-    const op = opacity.toFixed(2);
-    
-    const svgEl = `<ellipse cx="${cx}" cy="${cy}" rx="${rX}" ry="${rY}" transform="rotate(${rotDeg} ${cx} ${cy})" fill="${color}" fill-opacity="${op}" />`;
-    svgRef.current.push(svgEl);
+    // Eraser drawing shouldn't add to SVG paths usually, or should add mask. 
+    // For simplicity, we skip adding eraser paths to SVG to avoid white blobs on transparent SVG export
+    if (!isEraser) {
+        const cx = x.toFixed(1);
+        const cy = y.toFixed(1);
+        const rX = rx.toFixed(1);
+        const rY = ry.toFixed(1);
+        const rotDeg = ((rotation * 180) / Math.PI).toFixed(1);
+        const op = opacity.toFixed(2);
+        
+        const svgEl = `<ellipse cx="${cx}" cy="${cy}" rx="${rX}" ry="${rY}" transform="rotate(${rotDeg} ${cx} ${cy})" fill="${color}" fill-opacity="${op}" />`;
+        svgRef.current.push(svgEl);
+    }
   }, []);
   
   // Initialize Canvases
@@ -440,8 +439,15 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
     const brushAngleRad = settings.angle * (Math.PI / 180);
     const blurAmount = (settings.hardness >= 0.95 || settings.size <= 1) ? 0 : targetSize * (1 - settings.hardness);
 
-    ctx.shadowBlur = blurAmount;
-    ctx.shadowColor = settings.color;
+    // ERASER LOGIC: Use destination-out composite op
+    ctx.globalCompositeOperation = settings.isEraser ? 'destination-out' : 'source-over';
+
+    if (!settings.isEraser) {
+        ctx.shadowBlur = blurAmount;
+        ctx.shadowColor = settings.color;
+    } else {
+        ctx.shadowBlur = 0;
+    }
 
     for (let i = 0; i < steps; i++) {
       const t = i / steps;
@@ -451,82 +457,98 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
       const roughnessThreshold = Math.random();
       const dryBrushFactor = (velocity * settings.roughness) / 5; 
 
-      if (settings.size > 1 && roughnessThreshold < dryBrushFactor) continue;
+      if (settings.size > 1 && roughnessThreshold < dryBrushFactor && !settings.isEraser) continue;
 
       const radiusX = targetSize / 2;
       const radiusY = (targetSize / 2) * settings.roundness;
       const opacity = settings.size <= 1 ? 1.0 : 1.0;
       
-      drawAndRecordEllipse(ctx, drawingSvgRef, x, y, radiusX, radiusY, brushAngleRad, settings.color, opacity);
+      drawAndRecordEllipse(ctx, drawingSvgRef, x, y, radiusX, radiusY, brushAngleRad, settings.color, opacity, settings.isEraser);
 
-      if (settings.size > 1 && (opacity < 0.9 || settings.roughness > 0.2)) {
+      if (settings.size > 1 && (opacity < 0.9 || settings.roughness > 0.2) && !settings.isEraser) {
         for (let j = 0; j < 3; j++) {
            const angleOffset = (Math.random() - 0.5) * Math.PI;
            const distOffset = (Math.random() * targetSize) / 2;
            const bx = x + Math.cos(brushAngleRad + angleOffset) * distOffset;
            const by = y + Math.sin(brushAngleRad + angleOffset) * distOffset;
            
-           drawAndRecordEllipse(ctx, drawingSvgRef, bx, by, radiusX * 0.3, radiusY * 0.3, brushAngleRad, settings.color, opacity * 0.4 * Math.random());
+           drawAndRecordEllipse(ctx, drawingSvgRef, bx, by, radiusX * 0.3, radiusY * 0.3, brushAngleRad, settings.color, opacity * 0.4 * Math.random(), false);
         }
       }
     }
     
     ctx.shadowBlur = 0;
+    ctx.globalCompositeOperation = 'source-over'; // Reset
 
   }, [settings, drawAndRecordEllipse]);
 
-  const getCursorClass = () => 'cursor-crosshair';
+  const getCursorClass = () => settings.isEraser ? 'cursor-cell' : 'cursor-crosshair';
 
-  // --- Input Handlers with Touch Gesture Support ---
+  // --- Unified Pointer Events for Mouse, Touch, and Pen ---
+  
+  const handlePointerDown = (e: React.PointerEvent) => {
+    // Prevent default browser behavior (e.g. scroll, text selection)
+    // Important for drawing apps on mobile
+    if (e.target instanceof Element) {
+      e.target.setPointerCapture(e.pointerId);
+    }
+    
+    activePointers.current.set(e.pointerId, e.nativeEvent as PointerEvent);
 
-  const handleStart = (e: React.MouseEvent | React.TouchEvent) => {
-    // 1. Handle Multi-touch for gestures
-    if ('touches' in e && e.touches.length === 2) {
-      e.preventDefault();
-      // Stop drawing if it was active
-      isDrawingRef.current = false;
-      setIsDrawingState(false);
-      
-      isGesturingRef.current = true;
-      lastDistRef.current = getTouchDistance(e.touches[0], e.touches[1]);
-      lastCenterRef.current = getTouchCenter(e.touches[0], e.touches[1]);
-      return;
+    // 1. Gesture Start (Two fingers)
+    if (activePointers.current.size === 2) {
+       isDrawingRef.current = false;
+       lastPointRef.current = null;
+       isGesturingRef.current = true;
+       
+       const pointers = Array.from(activePointers.current.values()) as PointerEvent[];
+       lastDistRef.current = getDistance(
+           {x: pointers[0].clientX, y: pointers[0].clientY}, 
+           {x: pointers[1].clientX, y: pointers[1].clientY}
+       );
+       lastCenterRef.current = getCenter(
+           {x: pointers[0].clientX, y: pointers[0].clientY}, 
+           {x: pointers[1].clientX, y: pointers[1].clientY}
+       );
+       return;
     }
 
-    // 2. Handle Drawing (Single touch or Mouse)
-    if (mode === AppMode.DRAW && (!('touches' in e) || e.touches.length === 1)) {
-      e.preventDefault(); 
-      const pos = getCanvasPos(e);
+    // 2. Drawing Start (One pointer)
+    if (mode === AppMode.DRAW && activePointers.current.size === 1) {
+      const pos = getCanvasPos(e.clientX, e.clientY);
       
-      // Update Ref for sync access in Move
       isDrawingRef.current = true;
-      setIsDrawingState(true);
       
-      let pressure = -1; 
-      if ('touches' in e && e.touches.length > 0) {
-          const touch = e.touches[0];
-          if (typeof (touch as any).force === 'number') {
-              pressure = (touch as any).force;
-          }
-      }
+      // Use PointerEvent pressure if available, otherwise default
+      // 0.5 is a safe default for mouse if e.pressure is 0.5 (often default for mouse clicks in some browsers)
+      // or 0 (some mouses).
+      let pressure = e.pressure;
+      if (e.pointerType === 'mouse' && pressure === 0) pressure = 0.5;
+      if (e.pointerType === 'touch' && pressure === 0) pressure = 0.5; // Some touch screens don't report pressure
       
       lastPointRef.current = { ...pos, pressure, time: Date.now() };
     }
   };
 
-  const handleMove = (e: React.MouseEvent | React.TouchEvent) => {
-    // 1. Handle Gestures (Pinch/Zoom/Pan)
-    if ('touches' in e && e.touches.length === 2 && isGesturingRef.current) {
-        e.preventDefault();
-        const newDist = getTouchDistance(e.touches[0], e.touches[1]);
-        const newCenter = getTouchCenter(e.touches[0], e.touches[1]);
+  const handlePointerMove = (e: React.PointerEvent) => {
+    activePointers.current.set(e.pointerId, e.nativeEvent as PointerEvent);
+
+    // 1. Gesture Move
+    if (isGesturingRef.current && activePointers.current.size === 2) {
+        const pointers = Array.from(activePointers.current.values()) as PointerEvent[];
+        const newDist = getDistance(
+            {x: pointers[0].clientX, y: pointers[0].clientY}, 
+            {x: pointers[1].clientX, y: pointers[1].clientY}
+        );
+        const newCenter = getCenter(
+            {x: pointers[0].clientX, y: pointers[0].clientY}, 
+            {x: pointers[1].clientX, y: pointers[1].clientY}
+        );
         
         if (lastDistRef.current > 0 && lastCenterRef.current) {
-            // Calculate scale factor
             const scaleFactor = newDist / lastDistRef.current;
             const newScale = Math.min(Math.max(0.5, viewState.scale * scaleFactor), 5.0);
             
-            // Calculate pan delta
             const dx = newCenter.x - lastCenterRef.current.x;
             const dy = newCenter.y - lastCenterRef.current.y;
             
@@ -544,47 +566,45 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
         return;
     }
 
-    // 2. Handle Drawing
-    // Use the Ref here to check drawing state synchronously
-    if (mode === AppMode.DRAW && isDrawingRef.current) {
-      e.preventDefault();
-      // Safety check: if multi-touch somehow slipped in
-      if ('touches' in e && e.touches.length > 1) return;
+    // 2. Drawing Move
+    if (mode === AppMode.DRAW && isDrawingRef.current && activePointers.current.size === 1) {
+        // High-frequency event handling (Coalesced Events)
+        // Crucial for smooth lines on iPad Pro (120Hz) and other high-rate digitizers
+        const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+        
+        for (const ev of events) {
+            const pos = getCanvasPos(ev.clientX, ev.clientY);
+            let pressure = ev.pressure;
+            
+            if (ev.pointerType === 'mouse' && pressure === 0) pressure = 0.5;
+            // Force minimal pressure on touch if reported as 0 but valid move
+            if (ev.pointerType === 'touch' && pressure === 0) pressure = 0.5; 
 
-      const pos = getCanvasPos(e);
-      
-      let pressure = -1;
-      if ('touches' in e && e.touches.length > 0) {
-          const touch = e.touches[0];
-          if (typeof (touch as any).force === 'number') {
-              pressure = (touch as any).force;
-          }
-      }
-
-      const currentPoint = { ...pos, pressure, time: Date.now() };
-      drawStroke(currentPoint);
-      lastPointRef.current = currentPoint;
+            const currentPoint = { ...pos, pressure, time: Date.now() };
+            
+            // Only draw if we have a last point
+            if (lastPointRef.current) {
+               drawStroke(currentPoint);
+            }
+            lastPointRef.current = currentPoint;
+        }
     }
   };
 
-  const handleEnd = (e: React.MouseEvent | React.TouchEvent) => {
-    // Check remaining touches
-    if ('touches' in e) {
-       if (e.touches.length === 0) {
-           isGesturingRef.current = false;
-       } else if (e.touches.length < 2) {
-           isGesturingRef.current = false;
-           // Don't immediately resume drawing to prevent stray dots
-       }
-    } else {
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (e.target instanceof Element) {
+        e.target.releasePointerCapture(e.pointerId);
+    }
+    activePointers.current.delete(e.pointerId);
+
+    if (activePointers.current.size < 2) {
         isGesturingRef.current = false;
     }
-
-    if (isDrawingRef.current) {
-      isDrawingRef.current = false;
-      setIsDrawingState(false);
-      lastPointRef.current = null;
-      saveHistory();
+    
+    if (activePointers.current.size === 0 && isDrawingRef.current) {
+        isDrawingRef.current = false;
+        lastPointRef.current = null;
+        saveHistory();
     }
   };
 
@@ -799,14 +819,14 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
   return (
     <div 
       ref={containerRef} 
-      className={`w-full h-full relative overflow-hidden touch-none ${getCursorClass()}`}
-      onMouseDown={handleStart}
-      onMouseMove={handleMove}
-      onMouseUp={handleEnd}
-      onMouseLeave={handleEnd}
-      onTouchStart={handleStart}
-      onTouchMove={handleMove}
-      onTouchEnd={handleEnd}
+      className={`w-full h-full relative overflow-hidden ${getCursorClass()}`}
+      // Use Pointer Events for unified Mouse, Touch, and Stylus handling
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onPointerLeave={handlePointerUp}
+      style={{ touchAction: 'none' }} // Critical for preventing scroll on mobile
     >
       <canvas
         ref={guideCanvasRef}
