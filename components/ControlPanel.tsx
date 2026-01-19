@@ -176,7 +176,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
                <div className="grid grid-cols-2 gap-2 mb-2">
                   <button 
                     onClick={handleEraserToggle} 
-                    className={`text-[10px] flex items-center justify-center w-full px-2 py-2.5 rounded-md transition-colors font-medium ${
+                    className={`text-xs flex items-center justify-center w-full px-2 py-2.5 rounded-md transition-colors font-medium ${
                       settings.isEraser
                         ? 'bg-stone-800 text-white' 
                         : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
@@ -184,15 +184,15 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
                   >
                      <Eraser className="w-3.5 h-3.5 mr-1.5" /> 지우개
                   </button>
-                  <button onClick={onRandomize} className="text-[10px] flex items-center justify-center w-full px-2 py-2.5 bg-purple-50 text-purple-700 rounded-md hover:bg-purple-100 transition-colors font-medium">
+                  <button onClick={onRandomize} className="text-xs flex items-center justify-center w-full px-2 py-2.5 bg-purple-50 text-purple-700 rounded-md hover:bg-purple-100 transition-colors font-medium">
                      <Dices className="w-3.5 h-3.5 mr-1.5" /> 랜덤
                   </button>
-                  <button onClick={onReset} className="text-[10px] flex items-center justify-center w-full px-2 py-2.5 bg-stone-100 text-stone-600 rounded-md hover:bg-stone-200 transition-colors font-medium">
+                  <button onClick={onReset} className="text-xs flex items-center justify-center w-full px-2 py-2.5 bg-stone-100 text-stone-600 rounded-md hover:bg-stone-200 transition-colors font-medium">
                      <RotateCcw className="w-3.5 h-3.5 mr-1.5" /> 초기화
                   </button>
                   <button 
                      onClick={onToggleGuides} 
-                     className={`text-[10px] flex items-center justify-center w-full px-2 py-2.5 rounded-md transition-colors font-medium ${
+                     className={`text-xs flex items-center justify-center w-full px-2 py-2.5 rounded-md transition-colors font-medium ${
                        showGuides 
                          ? 'bg-blue-50 text-blue-600' 
                          : 'bg-stone-100 text-stone-700 hover:bg-stone-200'

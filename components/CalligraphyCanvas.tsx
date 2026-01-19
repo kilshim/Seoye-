@@ -66,6 +66,9 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
   const lastPointRef = useRef<Point | null>(null);
   const animationFrameIdRef = useRef<number | null>(null);
   
+  // Stylus / Palm Rejection State
+  const isPenRef = useRef(false);
+  
   // Gesture State Refs
   const lastDistRef = useRef<number>(0);
   const lastCenterRef = useRef<{x: number, y: number} | null>(null);
@@ -494,11 +497,35 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
       e.target.setPointerCapture(e.pointerId);
     }
     
-    // Explicitly cast to DOM PointerEvent
+    // PALM REJECTION:
+    // If we are already drawing with a stylus (pen), ignore any other input types (like touch palm)
+    if (isPenRef.current && e.pointerType !== 'pen') {
+        return;
+    }
+
+    // If this new pointer is a PEN, it takes absolute priority
+    if (e.pointerType === 'pen') {
+        isPenRef.current = true;
+        // If we were gesturing or finger drawing, cancel it effectively by taking over
+        isGesturingRef.current = false;
+        
+        // Track this pen
+        activePointers.current.set(e.pointerId, e.nativeEvent as unknown as PointerEvent);
+        
+        // Start Drawing Immediately
+        if (mode === AppMode.DRAW) {
+             isDrawingRef.current = true;
+             const pos = getCanvasPos(e.clientX, e.clientY);
+             lastPointRef.current = { ...pos, pressure: e.pressure, time: Date.now() };
+        }
+        return;
+    }
+    
+    // Normal Touch / Mouse Logic
     activePointers.current.set(e.pointerId, e.nativeEvent as unknown as PointerEvent);
 
-    // 1. Gesture Start (Two fingers)
-    if (activePointers.current.size === 2) {
+    // 1. Gesture Start (Two fingers) - Only allowed if NOT using pen
+    if (activePointers.current.size === 2 && !isPenRef.current) {
        isDrawingRef.current = false;
        lastPointRef.current = null;
        isGesturingRef.current = true;
@@ -515,18 +542,15 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
        return;
     }
 
-    // 2. Drawing Start (One pointer)
-    if (mode === AppMode.DRAW && activePointers.current.size === 1) {
+    // 2. Drawing Start (One pointer) - Only if not gesturing and not using pen
+    if (mode === AppMode.DRAW && activePointers.current.size === 1 && !isGesturingRef.current && !isPenRef.current) {
       const pos = getCanvasPos(e.clientX, e.clientY);
       
       isDrawingRef.current = true;
       
-      // Use PointerEvent pressure if available, otherwise default
-      // 0.5 is a safe default for mouse if e.pressure is 0.5 (often default for mouse clicks in some browsers)
-      // or 0 (some mouses).
       let pressure = e.pressure;
-      if (e.pointerType === 'mouse' && pressure === 0) pressure = 0.5;
-      if (e.pointerType === 'touch' && pressure === 0) pressure = 0.5; // Some touch screens don't report pressure
+      // Default pressure for Mouse/Touch if 0
+      if (e.pointerType !== 'pen' && pressure === 0) pressure = 0.5;
       
       lastPointRef.current = { ...pos, pressure, time: Date.now() };
     }
@@ -535,12 +559,15 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
   const handlePointerMove = (e: React.PointerEvent) => {
     // Prevent default to stop scrolling/zooming by browser
     e.preventDefault();
+    
+    // Palm Rejection: If Pen is active, ignore non-pen moves
+    if (isPenRef.current && e.pointerType !== 'pen') return;
 
-    // Explicitly cast to DOM PointerEvent
+    // Update the pointer in our map
     activePointers.current.set(e.pointerId, e.nativeEvent as unknown as PointerEvent);
 
     // 1. Gesture Move
-    if (isGesturingRef.current && activePointers.current.size === 2) {
+    if (isGesturingRef.current && activePointers.current.size === 2 && !isPenRef.current) {
         const pointers = Array.from(activePointers.current.values()) as PointerEvent[];
         const newDist = getDistance(
             {x: pointers[0].clientX, y: pointers[0].clientY}, 
@@ -573,19 +600,19 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
     }
 
     // 2. Drawing Move
-    if (mode === AppMode.DRAW && isDrawingRef.current && activePointers.current.size === 1) {
+    if (mode === AppMode.DRAW && isDrawingRef.current) {
         // High-frequency event handling (Coalesced Events)
-        // Crucial for smooth lines on iPad Pro (120Hz) and other high-rate digitizers
         const nativeEvent = e.nativeEvent as any;
         const events = (nativeEvent.getCoalescedEvents) ? nativeEvent.getCoalescedEvents() : [nativeEvent];
         
         for (const ev of events) {
+            // If pen is active, ignore this coalesced event if it's not from the pen (paranoid check)
+            if (isPenRef.current && ev.pointerType !== 'pen') continue;
+
             const pos = getCanvasPos(ev.clientX, ev.clientY);
             let pressure = ev.pressure;
             
-            if (ev.pointerType === 'mouse' && pressure === 0) pressure = 0.5;
-            // Force minimal pressure on touch if reported as 0 but valid move
-            if (ev.pointerType === 'touch' && pressure === 0) pressure = 0.5; 
+            if (ev.pointerType !== 'pen' && pressure === 0) pressure = 0.5;
 
             const currentPoint = { ...pos, pressure, time: Date.now() };
             
@@ -605,12 +632,25 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
         e.target.releasePointerCapture(e.pointerId);
     }
     activePointers.current.delete(e.pointerId);
+    
+    // If the Pen lifts, we allow touch interactions again
+    if (e.pointerType === 'pen') {
+        isPenRef.current = false;
+    }
 
     if (activePointers.current.size < 2) {
         isGesturingRef.current = false;
     }
     
-    if (activePointers.current.size === 0 && isDrawingRef.current) {
+    // Stop drawing if:
+    // 1. It was the last pointer
+    // 2. Or if the Pen lifted (even if palm is still on screen)
+    // 3. Or if we are in touch mode and last finger lifted
+    const shouldStopDrawing = 
+        (e.pointerType === 'pen' && isDrawingRef.current) || 
+        (activePointers.current.size === 0 && isDrawingRef.current);
+
+    if (shouldStopDrawing) {
         isDrawingRef.current = false;
         lastPointRef.current = null;
         saveHistory();
