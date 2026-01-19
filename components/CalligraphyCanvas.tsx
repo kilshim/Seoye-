@@ -487,8 +487,9 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
   // --- Unified Pointer Events for Mouse, Touch, and Pen ---
   
   const handlePointerDown = (e: React.PointerEvent) => {
-    // Prevent default browser behavior (e.g. scroll, text selection)
-    // Important for drawing apps on mobile
+    // Prevent default browser behavior (scroll, refresh, text selection)
+    e.preventDefault();
+
     if (e.target instanceof Element) {
       e.target.setPointerCapture(e.pointerId);
     }
@@ -532,6 +533,9 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
+    // Prevent default to stop scrolling/zooming by browser
+    e.preventDefault();
+
     // Explicitly cast to DOM PointerEvent
     activePointers.current.set(e.pointerId, e.nativeEvent as unknown as PointerEvent);
 
@@ -595,6 +599,8 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
+    e.preventDefault();
+    
     if (e.target instanceof Element) {
         e.target.releasePointerCapture(e.pointerId);
     }
