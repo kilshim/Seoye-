@@ -173,10 +173,10 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           {mode === AppMode.DRAW && (
             <div className="space-y-4 pb-2 border-b border-stone-100">
                {/* Utility Buttons Row */}
-               <div className="flex items-center justify-end gap-1">
+               <div className="grid grid-cols-2 gap-2 mb-2">
                   <button 
                     onClick={handleEraserToggle} 
-                    className={`text-[10px] flex items-center px-2 py-1 rounded-md transition-colors border ${
+                    className={`text-[10px] flex items-center justify-center w-full px-2 py-2 rounded-md transition-colors border ${
                       settings.isEraser
                         ? 'bg-stone-800 text-white border-stone-800' 
                         : 'bg-white text-stone-600 border-stone-200 hover:border-stone-400'
@@ -184,15 +184,15 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
                   >
                      <Eraser className="w-3 h-3 mr-1" /> 지우개
                   </button>
-                  <button onClick={onRandomize} className="text-[10px] flex items-center px-2 py-1 bg-purple-50 text-purple-700 rounded-md hover:bg-purple-100 transition-colors">
+                  <button onClick={onRandomize} className="text-[10px] flex items-center justify-center w-full px-2 py-2 bg-purple-50 text-purple-700 rounded-md hover:bg-purple-100 transition-colors">
                      <Dices className="w-3 h-3 mr-1" /> 랜덤
                   </button>
-                  <button onClick={onReset} className="text-[10px] flex items-center px-2 py-1 bg-stone-100 text-stone-600 rounded-md hover:bg-stone-200 transition-colors">
+                  <button onClick={onReset} className="text-[10px] flex items-center justify-center w-full px-2 py-2 bg-stone-100 text-stone-600 rounded-md hover:bg-stone-200 transition-colors">
                      <RotateCcw className="w-3 h-3 mr-1" /> 초기화
                   </button>
                   <button 
                      onClick={onToggleGuides} 
-                     className={`text-[10px] flex items-center px-2 py-1 rounded-md transition-colors ${
+                     className={`text-[10px] flex items-center justify-center w-full px-2 py-2 rounded-md transition-colors ${
                        showGuides 
                          ? 'bg-blue-50 text-blue-600' 
                          : 'bg-stone-100 text-stone-700 hover:bg-stone-200'

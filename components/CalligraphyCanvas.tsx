@@ -493,7 +493,8 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
       e.target.setPointerCapture(e.pointerId);
     }
     
-    activePointers.current.set(e.pointerId, e.nativeEvent as PointerEvent);
+    // Explicitly cast to DOM PointerEvent
+    activePointers.current.set(e.pointerId, e.nativeEvent as unknown as PointerEvent);
 
     // 1. Gesture Start (Two fingers)
     if (activePointers.current.size === 2) {
@@ -531,7 +532,8 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
-    activePointers.current.set(e.pointerId, e.nativeEvent as PointerEvent);
+    // Explicitly cast to DOM PointerEvent
+    activePointers.current.set(e.pointerId, e.nativeEvent as unknown as PointerEvent);
 
     // 1. Gesture Move
     if (isGesturingRef.current && activePointers.current.size === 2) {
@@ -570,7 +572,8 @@ const CalligraphyCanvas = forwardRef<CalligraphyCanvasHandle, CalligraphyCanvasP
     if (mode === AppMode.DRAW && isDrawingRef.current && activePointers.current.size === 1) {
         // High-frequency event handling (Coalesced Events)
         // Crucial for smooth lines on iPad Pro (120Hz) and other high-rate digitizers
-        const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+        const nativeEvent = e.nativeEvent as any;
+        const events = (nativeEvent.getCoalescedEvents) ? nativeEvent.getCoalescedEvents() : [nativeEvent];
         
         for (const ev of events) {
             const pos = getCanvasPos(ev.clientX, ev.clientY);
